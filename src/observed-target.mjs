@@ -15,7 +15,8 @@ class ObservedChangeEvent extends CustomEvent {
 			detail: {
 				value: detail.value,
 				oldValue: detail.oldValue,
-				eventTarget: detail.eventTarget
+				eventTarget: detail.eventTarget,
+                changeInfo: detail.changeInfo
 			}
 		});
 	}
@@ -77,11 +78,12 @@ export function observeTarget(TargetClass) {
 		 * @param {*} eventTarget The target object on which the change happened.
 		 * @returns {ObservedChangeEvent}
 		 */
-		static _createChangeValueEvent(value = null, oldValue = null, eventTarget = null) {
+		static _createChangeValueEvent(value = null, oldValue = null, eventTarget = null, changeInfo ) {
 			return new ObservedChangeEvent("changeValue", {
 				value,
 				oldValue,
-				eventTarget
+				eventTarget,
+                changeInfo
 			});
 		}
 
@@ -94,7 +96,8 @@ export function observeTarget(TargetClass) {
 					changeValue: new Set()
 				},
 				parentElement: null,
-				rendered: false
+				rendered: false,
+                animationEvents: [],
 			};
 		}
 
@@ -104,9 +107,10 @@ export function observeTarget(TargetClass) {
 		 * @param internalUsages
 		 * @param event
 		 */
-		static _dispatchStatic(internalUsages, event) {
-			const f = () => {
-				if (internalUsages.eventListeners && internalUsages.eventListeners[event.type] instanceof Set) {
+		static _dispatchStatic(internalUsages, event, keepAnimations = false) {
+
+            const f = () => {
+                if (internalUsages.eventListeners && internalUsages.eventListeners[event.type] instanceof Set) {
 					for (let handler of internalUsages.eventListeners[event.type]) {
 						handler(event);
 					}
@@ -114,9 +118,11 @@ export function observeTarget(TargetClass) {
 				internalUsages.animationFrame = null;
 			};
 
+
+
 			if (window && typeof window.requestAnimationFrame==="function") {
-				if (internalUsages.animationFrame) {
-					// console.info('deleted old animation frame. Will only run a single event.');
+				if (!keepAnimations && internalUsages.animationFrame) {
+					console.info('deleted old animation frame. Will only run a single event.');
 					window.cancelAnimationFrame(internalUsages.animationFrame);
 				}
 

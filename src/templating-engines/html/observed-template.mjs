@@ -71,7 +71,6 @@ export const observedTemplateFactory = (trim = false) => (stringParts, ...vars) 
     const content = templateElement.content;
     const elementFactory = createElementFactory(content);
     let element = null;
-
     // eslint-disable-next-line no-cond-assign
     while (element = elementFactory.next()) {
         switch (element.nodeType) {
