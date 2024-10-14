@@ -42,7 +42,7 @@ export function observeComponent(TargetElement, config = {}) {
             });
             Object.defineProperty(this, "state", {
                 configurable: false,
-                writable: true,
+                writable: false,
                 enumerable: false,
                 value: new ObservedObject()
             });
