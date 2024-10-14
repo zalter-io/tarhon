@@ -117,7 +117,7 @@ export function observeComponent(TargetElement, config = {}) {
             return this.#shadowElement = this.attachShadow({mode: "closed"});
         }
 
-        setAttribute(attributeName, value, onlySuper = false) {
+        setAttribute(attributeName, value, onlySuper = false, changeInfo={}) {
             if(onlySuper) return super.setAttribute(attributeName, value);
 
             if ((
@@ -128,9 +128,21 @@ export function observeComponent(TargetElement, config = {}) {
             ) && value.bidirectional) {
                 this.attrs[attributeName] = value;
             } else {
+                const currentAttValue = this.attrs[attributeName];
+                //
+
                 if (typeof this.constructor.observedAttributes !== "undefined" && this.constructor.observedAttributes.includes(attributeName)) {
                     if (attributeName === "checked" || attributeName === "disabled" || attributeName === "readonly")
                         this.attrs[attributeName] = (value === "on" || value === "true" || value === attributeName || value === true || value === "");
+                    else  if(currentAttValue instanceof  ObservedArray) {
+                        if(changeInfo.type === 'set' || changeInfo.type === 'push') {
+                            currentAttValue[changeInfo.key] = value[changeInfo.key];
+                        } else if(changeInfo.type === 'delete') {
+                            currentAttValue.delete(changeInfo.id, changeInfo.identifier);
+                        } else  {
+                            this.attrs[attributeName] = value;
+                        }
+                    }
                     else
                         this.attrs[attributeName] = value;
                 }
@@ -144,6 +156,14 @@ export function observeComponent(TargetElement, config = {}) {
                 return super.setAttribute(attributeName, undefined);
             }
         }
+
+        appendValueToArrayAttribute(attributeName, value) {
+            if(this.attrs[attributeName] instanceof  ObservedArray) {
+                this.attrs[attributeName].push(value);
+            }
+        }
+
+
 
         getAttribute(name, callGetValue = true) {
             if (typeof this.constructor.observedAttributes !== "undefined" && this.constructor.observedAttributes.includes(name)) {

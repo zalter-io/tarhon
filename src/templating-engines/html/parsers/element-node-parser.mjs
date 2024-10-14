@@ -113,7 +113,6 @@ export const elementNodeParser = async (element, uniqueIdentifiers, oldElement =
                                     createAttrChangeHandler(element, attribute.name)
                             );
                         }
-
                         element.setAttribute(attribute.name, valueCopy);
                     }
                 }

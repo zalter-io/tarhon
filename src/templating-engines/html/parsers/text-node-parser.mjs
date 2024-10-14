@@ -58,7 +58,7 @@ export const textNodeParser = (element, uniqueIdentifiers, trim) => {
                             if (typeof uniqueIdentifiers[matchedItem] === "object" && typeof uniqueIdentifiers[matchedItem].addEventListener === "function") {
                                 const handler = createNodeChangeHandler(container);
                                 handler.target = uniqueIdentifiers[matchedItem];
-                                uniqueIdentifiers[matchedItem].addEventListener("change", createNodeChangeHandler(container));
+                                uniqueIdentifiers[matchedItem].addEventListener("change", handler);
                             }
                         }
                     }

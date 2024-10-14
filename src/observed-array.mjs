@@ -76,14 +76,15 @@ export class ObservedArray extends observeTarget(Array) {
 				}
 
 				if (target[key] instanceof ObservedValue) {
-					const event = ObservedArray._createChangeValueEvent(value, target[key], receiver);
-					ObservedArray._dispatchStatic(internalUsages, event);
+					const event = ObservedArray._createChangeValueEvent(value, target[key], receiver, {key, type: 'set'});
+					ObservedArray._dispatchStatic(internalUsages, event, true, );
 					return target[key].setValue(value);
 				}
 
-				const returnValue = target[key] = value;
-				const event = ObservedArray._createChangeValueEvent(value, target[key], receiver);
-				ObservedArray._dispatchStatic(internalUsages, event);
+				const event = ObservedArray._createChangeValueEvent(value, target[key], receiver, {key, type: 'set'});
+                target[key] = value;
+                ObservedArray._dispatchStatic(internalUsages, event, true);
+
                 return true;
 			}
 		});
@@ -106,13 +107,13 @@ export class ObservedArray extends observeTarget(Array) {
 	 * @param {Array} arrayToReplaceWith
 	 * @param {boolean} runEvent
 	 */
-	[Symbol.for("__ARRAY_REPLACE__")](arrayToReplaceWith, runEvent = false) {
-		this[INTERNAL_ARRAY].splice(0, this[INTERNAL_ARRAY].length, ...arrayToReplaceWith);
+	[Symbol.for("__ARRAY_REPLACE__")](arrayToReplaceWith=[], runEvent = false) {
 
-		if (runEvent) {
-			const event = ObservedArray._createChangeValueEvent(null, null, this);
-			ObservedArray._dispatchStatic(this[INTERNAL_USAGES_SYMBOL], event);
-		}
+            this[INTERNAL_ARRAY].splice(0, this[INTERNAL_ARRAY].length, ...arrayToReplaceWith);
+            if (runEvent) {
+                const event = ObservedArray._createChangeValueEvent(null, null, this);
+                ObservedArray._dispatchStatic(this[INTERNAL_USAGES_SYMBOL], event);
+            }
 	}
 
 	/**
@@ -130,27 +131,54 @@ export class ObservedArray extends observeTarget(Array) {
 	 * @returns {*}
 	 */
 	filter(callback) {
-		const newlyBuiltArray = super.filter(callback);
+        const newlyBuiltArray = super.filter(callback);
 
-		if (this.length===0) {
-			newlyBuiltArray[INTERNAL_ARRAY].splice(0, 1);
-		}
+        if (this.length===0) {
+            newlyBuiltArray[INTERNAL_ARRAY].splice(0, 1);
+        }
 
-		// this event listener may in fact never be removed ... possible source of memory leaking.
-		this.addEventListener("change", event => {
-			newlyBuiltArray[INTERNAL_ARRAY].splice(
-					0,
-					newlyBuiltArray.length,
-					...Array.from(event.eventTarget).filter(callback)
-			);
-			ObservedArray._dispatchStatic(
-					newlyBuiltArray[INTERNAL_USAGES_SYMBOL],
-					ObservedArray._createChangeValueEvent(null, null, newlyBuiltArray)
-			);
-		});
+        // this event listener may in fact never be removed ... possible source of memory leaking.
+        this.addEventListener("change", event => {
 
-		return newlyBuiltArray;
+            if(event.detail.changeInfo?.type === 'set') {
+                const newItem = event.detail.value;
+                const isValid = callback(newItem);
+                if(isValid) {
+                    newlyBuiltArray[event.detail.changeInfo.key] = newItem;
+                }
+            } else if( event.detail.changeInfo?.type === 'delete') {
+                const isExiting = newlyBuiltArray[INTERNAL_ARRAY].find(item=> item[INTERNAL_ARRAY][event.detail.changeInfo.identifier] === event.detail.changeInfo.id);
+                if(isExiting) {
+                    newlyBuiltArray.delete(event.detail.changeInfo.id, event.detail.changeInfo.identifier);
+                }
+            } else  {
+                newlyBuiltArray[INTERNAL_ARRAY].splice(
+                        0,
+                        newlyBuiltArray.length,
+                        ...Array.from(event.eventTarget).filter(callback)
+                );
+                ObservedArray._dispatchStatic(
+                        newlyBuiltArray[INTERNAL_USAGES_SYMBOL],
+                        ObservedArray._createChangeValueEvent(null, null, newlyBuiltArray)
+                );
+            }
+        });
+
+        return newlyBuiltArray;
 	}
+
+    pipe(targetArray) {
+        this.addEventListener('change', (e) => {
+            if (e.detail?.changeInfo?.type === 'set') {
+                targetArray[+e.detail.changeInfo.key] = e.detail.value
+            } else if (e.detail?.changeInfo?.type === 'delete') {
+                targetArray.delete(e.detail?.changeInfo?.id, e.detail?.changeInfo?.identifier)
+            } else {
+                const replaceArray = e.eventTarget || e.detail.value;
+                targetArray[Symbol.for("__ARRAY_REPLACE__")](replaceArray, true);
+            }
+        })
+    }
 
 	/**
 	 * Array map callback
@@ -166,34 +194,55 @@ export class ObservedArray extends observeTarget(Array) {
 	 * @param {boolean} returnsStrings = defaults to false. States whether the map returns strings. Otherwise it expects you to return document Fragments.
 	 * @returns {Uint8Array | BigInt64Array | *[] | Float64Array | Int8Array | Float32Array | Int32Array | Uint32Array | Uint8ClampedArray | BigUint64Array | Int16Array | Uint16Array}
 	 */
-	map(callback, returnsStrings = false) {
+	map(callback, returnsStrings = false, isRenderFunction = true) {
 		const newlyBuiltArray = super.map(callback);
-
 		// Due to a bug in javascript we have to do this. Super map will create an array with the first element set to zero.
 		if (this.length===0) {
 			newlyBuiltArray[INTERNAL_ARRAY].splice(0, 1);
 		}
 
 		this.addEventListener("change", (event) => {
-			newlyBuiltArray[INTERNAL_ARRAY].splice(
+            newlyBuiltArray[INTERNAL_ARRAY].splice(
 					0,
 					newlyBuiltArray[INTERNAL_ARRAY].length,
-					...Array.from(this[INTERNAL_ARRAY]).map(callback)
+					...Array.from(this[INTERNAL_ARRAY])
 			);
-			ObservedArray._dispatchStatic(
+            const changeEvent = ObservedArray._createChangeValueEvent(event.detail.value, event.detail.oldValue, newlyBuiltArray, event.detail.changeInfo)
+            ObservedArray._dispatchStatic(
 					newlyBuiltArray[INTERNAL_USAGES_SYMBOL],
-					ObservedArray._createChangeValueEvent(null, null, newlyBuiltArray)
+                    changeEvent,
+                    event.detail.changeInfo
 			);
-		});
-
+        });
 		newlyBuiltArray[SELF_BUILD].builtWith = "map";
 		newlyBuiltArray[SELF_BUILD].buildCallback = callback;
 		newlyBuiltArray[SELF_BUILD].returnsStrings = returnsStrings;
-
+        newlyBuiltArray[SELF_BUILD].isRenderFunction = isRenderFunction;
 		return newlyBuiltArray;
 	}
 
-	/**
+    cleanAfterRender(){
+        if(this[SELF_BUILD].isRenderFunction) {
+            this[INTERNAL_ARRAY].splice(0, this[INTERNAL_ARRAY].length);
+        }
+    }
+
+
+    delete(id, identifier = 'id') {
+
+        const internalUsage = this[INTERNAL_USAGES_SYMBOL];
+        const index = this[INTERNAL_ARRAY].findIndex(item => item[identifier] === id);
+        this[INTERNAL_ARRAY].splice(index, 1);
+        const changeEvent = ObservedArray._createChangeValueEvent(null, null, this, {type: 'delete', id, identifier, key: index});
+        ObservedArray._dispatchStatic(
+                internalUsage,
+                changeEvent,
+                true
+        );
+    }
+
+
+    /**
 	 * TODO: Change this in case it interferes with the templates ?
 	 * @param {string} hint
 	 * @returns {string|number}

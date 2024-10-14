@@ -14,8 +14,18 @@ export const createAttrChangeHandler = (element, attributeName) => {
             event.value.removeEventListener("change", eventHandler);
             // return; let it run once to get the initial value.
         }
+
         // this one has to be treated in a special way.
-        if (event.eventTarget) element.setAttribute(attributeName, event.eventTarget);
+        if (event.eventTarget){
+            const attributeValue = element.getAttribute(attributeName);
+            if(attributeValue instanceof  ObservedArray && event.eventTarget instanceof  ObservedArray) {
+                element.setAttribute(attributeName, event.eventTarget, false, event.detail.changeInfo);
+            }
+            else {
+                element.setAttribute(attributeName, event.eventTarget);
+            }
+
+        }
         else element.setAttribute(attributeName, event.value);
     };
     return eventHandler
@@ -108,6 +118,7 @@ export const createIDLChangeHandler = (element, idlAttributeName, withConditiona
  * @returns {NodeChangeHandler} the change Handler function for the element.
  */
 export const createNodeChangeHandler = (element) => {
+
     const f = function (event) {
         if (event.eventTarget instanceof ObservedArray) {
             // this is an array
@@ -118,8 +129,35 @@ export const createNodeChangeHandler = (element) => {
                 case "map":
                     // this usually is a container;
                     if (event.eventTarget[SELF_BUILD].container) {
-                        event.eventTarget[SELF_BUILD].container.textContent = "";
-                        event.eventTarget[SELF_BUILD].container.append(...event.eventTarget);
+                        const renderCallback = event.eventTarget[SELF_BUILD].buildCallback
+                        const changeInfo = event.detail.changeInfo
+                        if(changeInfo?.type === 'set') {
+                            const newNode = renderCallback(event.detail.value);
+                            const itemIndex = +changeInfo.key;
+
+                            const currentNode = event.eventTarget[SELF_BUILD].container.childNodes[itemIndex];
+                            if(currentNode) {
+                                // replace child
+                                event.eventTarget[SELF_BUILD].container.replaceChild(newNode, currentNode);
+                            }
+                            else {
+                                // add child
+                                event.eventTarget[SELF_BUILD].container.append(newNode)
+                            }
+                        } else  if(changeInfo?.type === 'delete') {
+                            // remove child, only correct for rendered by tarhon.htmlT
+                            const deleteIndex = event.detail.changeInfo.key;
+                            if(deleteIndex === -1) {
+                                throw new Error("Could not find the item to delete.")
+                            }
+                            const deleteNode = event.eventTarget[SELF_BUILD].container.childNodes[deleteIndex]
+                            event.eventTarget[SELF_BUILD].container.removeChild(deleteNode);
+                        }
+                        else  {
+                            event.eventTarget[SELF_BUILD].container.textContent = "";
+                            event.eventTarget[SELF_BUILD].container.append(...event.eventTarget.map(renderCallback));
+                        }
+                        event.eventTarget.cleanAfterRender();
                     } else {
                         element.data = Array.from(event.eventTarget).join("");
                     }
